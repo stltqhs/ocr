@@ -1,0 +1,2 @@
+
+char *RecognizeOptchaText(char *filename);
