@@ -24,8 +24,10 @@ int _main(int argc, char **argv)
 	SigmoidalContrast(image);
 	ReduceNoise(image);
 	GreyImage(image);
-	WhiteAndBlackImage(image);
+	WhiteAndBlackImage(image, 127);
 	ReverseImageIfNeeded(image);
+	ClearFrameBorder(image);
+	BaselineAlignment(image);
 	WriteImageToFile(image, argv[2]);
 	DestroyMagickWand(image);
 	printf("%s", RecognizeOptchaText(argv[2]));

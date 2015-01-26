@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 #include <wand/MagickWand.h>
 #include "optimize.h"
 
@@ -88,7 +89,7 @@ void GreyImage(MagickWand *image)
 	DestroyPixelIterator(pixel_iterator);
 }
 
-void WhiteAndBlackImage(MagickWand *image)
+void WhiteAndBlackImage(MagickWand *image, int threshold)
 {
 	MagickPixelPacket pixel;
 	PixelIterator *pixel_iterator;
@@ -120,7 +121,7 @@ void WhiteAndBlackImage(MagickWand *image)
 			g = pixel.green * QuantumScale * 255;
 			b = pixel.blue * QuantumScale * 255;
 			grey = (r * 30 + g * 59 + b * 11 + 50) / 100;
-			if (grey > 127)
+			if (grey > threshold)
 				grey = 255;
 			else
 				grey = 0;
@@ -217,7 +218,7 @@ int IsIsolatedNoise(BYTE *data, int offset, int width, int height, MagickPixelPa
 	int x, y, i, j, grey, t = ISOLATE_SPAN / 2, m, n, k, tgrey, color, rf;
 	BYTE *pdata = data, r, g, b;
 	int r2, g2, b2;
-	int (*npdata)[width] = (int(*)[width])data; 
+	int *npdata = (int*)data; 
 
 	y = offset % width;//column
 	x = offset / width;//row
@@ -239,9 +240,9 @@ int IsIsolatedNoise(BYTE *data, int offset, int width, int height, MagickPixelPa
 				n = width - 1;
 			else
 				n = j;	
-			r = npdata[m][n] & 0x000000FF;
-			g = (npdata[m][n] >> 8) & 0x000000FF;
-			b = (npdata[m][n] >> 16) & 0x000000FF;
+			r = npdata[m * width + n] & 0x000000FF;
+			g = (npdata[m * width + n] >> 8) & 0x000000FF;
+			b = (npdata[m * width + n] >> 16) & 0x000000FF;
 			grey = GREY_BYTE(r, g, b);
 			
 			color = r;
@@ -265,7 +266,7 @@ int IsIsolatedNoise(BYTE *data, int offset, int width, int height, MagickPixelPa
 				continue;
 			r = (pixel_unit[k] >> 24) & 0x000000FF;
 			g = (pixel_unit[i] >> 24) & 0x000000FF;
-			if (abs(r - g) > 1)
+			if (abs(r - g) > 5)
 				j++;
 
 			r = pixel_unit[i] & 0x000000FF;
@@ -332,6 +333,192 @@ void ReverseImageIfNeeded(MagickWand *image)
 		ReverseImage(image);
 }
 
+void BaselineAlignment(MagickWand *image)
+{
+	long width, height;
+        int i , j, k;
+	int tl, tr, dl, dr;
+	BYTE *data = NULL;
+	int wordCount = 0;
+	DrawingWand *drawing;
+	PixelWand *pixelwand;
+	int baseline = -1
+
+	width = MagickGetImageWidth(image);
+	height = MagickGetImageHeight(image);
+	data = (BYTE*)calloc(width * height, 4);
+	MagickExportImagePixels(image, 0, 0, width, height, "RGBA", CharPixel, data);
+	BYTE *wordsections = (BYTE*)calloc(10, sizeof(WordSection));
+	wordCount = FindWordSection(image, width, height, (PtrWordSection)wordsections);
+	drawing = NewDrawingWand();
+	pixelwand = NewPixelWand();
+	PixelSetColor(pixelwand, "#ff0000");
+	DrawSetStrokeColor(drawing, pixelwand);
+	DrawSetFillOpacity(drawing, 0);
+	for (i = 0; i < wordCount; i++)
+	{
+		PtrWordSection pws = &((PtrWordSection)wordsections)[i];
+		if (baseline == -1)
+		{
+			baseline = pws->rb.y;
+			continue;
+		}
+		if (abs(pws->rb.y - baseline) > 2)
+		{
+			if (pws->rb.y - baseline < 0)
+			{
+				for(j = pws->lt->x; j <= pws->rt->x; j++)
+				{
+					for(k = pws->lt->y; k <= pws->rb.y; k++)
+					{
+					}
+				}
+			}
+		}
+		//DrawRectangle(drawing, pws->lt.x, pws->lt.y, pws->rb.x, pws->rb.y);
+	}
+	//MagickDrawImage(image, drawing);
+	free(data);
+}
+
+void ErodeAndExpansion(MagickWand *image, int width, int height, int level)
+{
+	int w, h;
+	w = width / level;
+	h = height / level;
+	MagickScaleImage(image, w, h);
+	MagickScaleImage(image, width, height);
+}
+
+int FindWordSection(MagickWand *image, int width, int height, PtrWordSection ws)
+{
+	MagickWand *tmp_image = CloneMagickWand(image);
+	int wordCount = 0;
+	int xoffset = 0;
+	int maxNoColor = 2;
+	int noColorCount = 0;
+	int x, y;
+	BOOL calcPosition = FALSE;
+	BYTE *data;
+	int *pdata;
+	Point a, b, c, d;
+
+	ErodeAndExpansion(tmp_image, width, height, 4);
+	WhiteAndBlackImage(tmp_image, 250);
+
+	data = (BYTE*)calloc(width * height, 4);
+	MagickExportImagePixels(tmp_image, 0, 0, width, height, "RGBA", CharPixel, data);
+	/*
+	 * a  b
+	 * c  d
+	 */
+	void PreparePoint(Point *a, Point *b, Point *c, Point *d, int width, int height);
+	void CopyPoint(Point *dest, Point *src);
+	PreparePoint(&a, &b, &c, &d, width, height);
+	for (x = 0; x < width; x++)
+	{
+		BOOL hasColor = FALSE;
+		for (y = 0; y < height; y++)
+		{
+			int color = *((int*)(data + (y * width + x) * 4));
+			color = color & 0x00FFFFFF;
+			if (color == 0 )
+			{
+				a.y = nmini(a.y, y);
+				a.x = nmini(a.x, x);
+				b.y = nmini(b.y, y);
+				b.x = nmaxi(b.x, x);
+				c.y = nmaxi(c.y, y);
+				c.x = nmini(c.x, x);
+				d.y = nmaxi(d.y, y);
+				d.x = nmaxi(d.x, x);
+
+				hasColor = TRUE;
+				calcPosition = TRUE;
+				noColorCount = 0;
+			}
+		}
+		if (!hasColor)
+			noColorCount++;
+		if (noColorCount >= maxNoColor && calcPosition)
+		{
+			CopyPoint(&(ws[wordCount].lt), &a);
+			CopyPoint(&(ws[wordCount].rt), &b);
+			CopyPoint(&(ws[wordCount].lb), &c);
+			CopyPoint(&(ws[wordCount].rb), &d);
+			PreparePoint(&a, &b, &c, &d, width, height);
+			wordCount++;
+			calcPosition = FALSE;
+			noColorCount = 0;
+		}
+	}
+
+	if (calcPosition)
+	{
+		CopyPoint(&(ws[wordCount].lt), &a);
+		CopyPoint(&(ws[wordCount].rt), &b);
+		CopyPoint(&(ws[wordCount].lb), &c);
+		CopyPoint(&(ws[wordCount].rb), &d);
+		PreparePoint(&a, &b, &c, &d, width, height);
+		wordCount++;
+		calcPosition = FALSE;
+		noColorCount = 0;
+	}
+
+	DestroyMagickWand(tmp_image);
+
+	return wordCount;
+}
+
+void CopyPoint(Point *dest, Point *src)
+{
+	dest->x = src->x;
+	dest->y = src->y;
+}
+
+void PreparePoint(Point *a, Point *b, Point *c, Point *d, int width, int height)
+{
+	a->x = width;
+	a->y = height;
+	b->x = 0;
+	b->y = height;
+	c->x = width;
+	c->y = 0;
+	d->x = 0;
+	d->y = 0;
+}
+
+void ClearFrameBorder(MagickWand *image)
+{
+	long width, height;
+        int i, j;
+	PixelWand **pixel_wand;
+	PixelIterator *iterator;
+
+	width = MagickGetImageWidth(image);
+	height = MagickGetImageHeight(image);
+
+	iterator = NewPixelIterator(image);
+	for (i = 0; i < height; i++)
+	{
+		pixel_wand = PixelGetNextIteratorRow(iterator, (size_t*)&width);
+		for (j = 0; j < width; j++)
+		{
+			if (i == 0 || i == height - 1)
+			{
+				PixelSetColor(pixel_wand[j], "#ffffff");
+			}
+			else
+			{
+				if (j == 0 || j == width - 1)
+					PixelSetColor(pixel_wand[j], "#ffffff");
+			}			
+		}
+		(void)PixelSyncIterator(iterator);
+	}
+	DestroyPixelIterator(iterator);
+}
+
 int nmaxi(int a, int b)
 {
 	return a >= b ? a:b;
@@ -350,4 +537,9 @@ int nmini(int a, int b)
 int nminl(long a, long b)
 {
 	return a < b?a:b;
+}
+void ZeroPoint(Point *p)
+{
+	p->x = 0;
+	p->y = 0;
 }
