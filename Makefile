@@ -1,5 +1,4 @@
 INCLUDE=-I/usr/local/include/ImageMagick-6 -I/usr/local/include/leptonica -I/usr/local/include/tesseract
-LIB_DIRS=/usr/local/lib
 LIB=-lMagickWand-6.Q16 -ltesseract
 OBJ=ocr.o optimize.o tesseract.o
 PARAMD=-DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16

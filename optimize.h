@@ -58,7 +58,7 @@ int IsIsolatedNoise(BYTE *data, int offset, int width, int height, MagickPixelPa
 
 void BaselineAlignment(MagickWand *image);
 
-void ErodeAndExpansion(MagickWand *image, int width, int height, int level);
+void ErodeAndExpansion(MagickWand *image, int width, int height, double level);
 
 int FindWordSection(MagickWand *image, int width, int height, PtrWordSection ws);
 

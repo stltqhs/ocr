@@ -1,7 +1,8 @@
 #include <tesseract/baseapi.h>
 #include <leptonica/allheaders.h>
 
-char *RecognizeOptchaText(char *filename)
+extern "C" {
+char *RecognizeOptchaTextFromData(const unsigned char *imagedata, int width, int height, int bytes_per_pixel, int bytes_per_line)
 {
 	char *outText = NULL;
         tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
@@ -11,10 +12,9 @@ char *RecognizeOptchaText(char *filename)
 		fprintf(stderr, "Could not initialize tesseract.\n");
 	        exit(1);
 	}
-	Pix *image = pixRead(filename);
-	api->SetImage(image);
+	api->SetImage(imagedata, width, height, bytes_per_pixel, bytes_per_line);
 	outText = api->GetUTF8Text();
 	api->End();
-	pixDestroy(&image);
 	return outText;
+}
 }

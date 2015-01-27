@@ -11,6 +11,7 @@
 #define _SigmoidalContrast(x) \
 	  (QuantumRange*(1.0/(1+exp(10.0*(0.5-QuantumScale*x)))-0.0066928509)*1.0092503)
 
+#define SCALE_FACTOR 1.8
 void SigmoidalContrast(MagickWand *image)
 {
 	MagickPixelPacket pixel;
@@ -337,51 +338,54 @@ void BaselineAlignment(MagickWand *image)
 {
 	long width, height;
         int i , j, k;
-	int tl, tr, dl, dr;
-	BYTE *data = NULL;
+	long w, h;
 	int wordCount = 0;
 	DrawingWand *drawing;
-	PixelWand *pixelwand;
-	int baseline = -1
+	MagickWand **alphabetic;
+	PixelWand *fillColor;
+	BYTE *wordsections;
 
 	width = MagickGetImageWidth(image);
 	height = MagickGetImageHeight(image);
-	data = (BYTE*)calloc(width * height, 4);
-	MagickExportImagePixels(image, 0, 0, width, height, "RGBA", CharPixel, data);
-	BYTE *wordsections = (BYTE*)calloc(10, sizeof(WordSection));
+	wordsections = (BYTE*)calloc(10, sizeof(WordSection));
 	wordCount = FindWordSection(image, width, height, (PtrWordSection)wordsections);
+	if (wordCount <= 1)
+		return;
+	alphabetic = (MagickWand**)calloc(wordCount, sizeof(MagickWand*));
 	drawing = NewDrawingWand();
-	pixelwand = NewPixelWand();
-	PixelSetColor(pixelwand, "#ff0000");
-	DrawSetStrokeColor(drawing, pixelwand);
-	DrawSetFillOpacity(drawing, 0);
+	fillColor = NewPixelWand();
 	for (i = 0; i < wordCount; i++)
 	{
 		PtrWordSection pws = &((PtrWordSection)wordsections)[i];
-		if (baseline == -1)
+		MagickWand *im = MagickGetImageRegion(image, pws->rb.x - pws->lb.x + 1, pws->rb.y - pws->lt.y + 1, pws->lt.x, pws->lt.y);
+		if (i == 0)
 		{
-			baseline = pws->rb.y;
-			continue;
+			w = MagickGetImageWidth(im);
+			h = MagickGetImageHeight(im);
+			k = (height - h) / 2;
 		}
-		if (abs(pws->rb.y - baseline) > 2)
-		{
-			if (pws->rb.y - baseline < 0)
-			{
-				for(j = pws->lt->x; j <= pws->rt->x; j++)
-				{
-					for(k = pws->lt->y; k <= pws->rb.y; k++)
-					{
-					}
-				}
-			}
-		}
-		//DrawRectangle(drawing, pws->lt.x, pws->lt.y, pws->rb.x, pws->rb.y);
+		*(alphabetic + i) = im;
 	}
-	//MagickDrawImage(image, drawing);
-	free(data);
+	PixelSetColor(fillColor, "#FFFFFF");
+	DrawSetFillColor(drawing, fillColor);
+	DrawRectangle(drawing, 0, 0, width, height);//background color
+	
+	j = 4;
+	for (i = 0; i < wordCount; i++)
+	{
+		DrawComposite(drawing, CopyCompositeOp, j, k, w, h, *(alphabetic + i));
+		j += 8 + w;
+		free(alphabetic[i]);
+	}
+	MagickDrawImage(image, drawing);
+
+	width *= SCALE_FACTOR;
+	height *= SCALE_FACTOR;
+	MagickScaleImage(image, width, height);
+	free(alphabetic);
 }
 
-void ErodeAndExpansion(MagickWand *image, int width, int height, int level)
+void ErodeAndExpansion(MagickWand *image, int width, int height, double level)
 {
 	int w, h;
 	w = width / level;
@@ -403,7 +407,7 @@ int FindWordSection(MagickWand *image, int width, int height, PtrWordSection ws)
 	int *pdata;
 	Point a, b, c, d;
 
-	ErodeAndExpansion(tmp_image, width, height, 4);
+	ErodeAndExpansion(tmp_image, width, height, 1.5);
 	WhiteAndBlackImage(tmp_image, 250);
 
 	data = (BYTE*)calloc(width * height, 4);
