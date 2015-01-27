@@ -4,7 +4,7 @@
 
 <h3>安装</h3>
 <p>直接执行make命令即可编译</p>
-<p>编译php模块：python setup.py build</p>
+<p>编译python模块：python setup.py build</p>
 
 <h3>依赖库</h3>
 <p>imagemagick6, tesseract</p>
